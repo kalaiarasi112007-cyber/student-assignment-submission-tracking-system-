@@ -1,0 +1,6 @@
+{
+  "name": "Student Assignment Submission & Tracking System",
+  "description": "Centralized academic assignment submission, student-wise tracking, and faculty management system powered by a relational SQL database.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
