@@ -1,7 +1,6 @@
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
-import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -9,8 +8,6 @@ import cors from 'cors';
 import multer from 'multer';
 import { getDb, queryAll, queryOne, execute, persistDb } from './server/db.ts';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const JWT_SECRET = process.env.JWT_SECRET || 'academic-jwt-secret-assignment-tracker-2026';
 
@@ -49,7 +46,7 @@ const upload = multer({
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   // 1. CORS Configuration
   app.use(cors({
@@ -77,16 +74,25 @@ async function startServer() {
   // ----------------------------------------------------
   function authenticateToken(req: any, res: any, next: any) {
     const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+    const token = authHeader && authHeader.startsWith('Bearer ')
+      ? authHeader.split(' ')[1]
+      : null;
 
     if (!token) {
-      return res.status(401).json({ success: false, message: 'Authentication required. Please sign in.' });
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required. Please sign in.'
+      });
     }
 
     jwt.verify(token, JWT_SECRET, (err: any, user: any) => {
       if (err) {
-        return res.status(401).json({ success: false, message: 'Please login again' });
+        return res.status(401).json({
+          success: false,
+          message: 'Please login again'
+        });
       }
+
       req.user = user;
       next();
     });
@@ -94,15 +100,23 @@ async function startServer() {
 
   function requireFaculty(req: any, res: any, next: any) {
     if (!req.user || req.user.role !== 'faculty') {
-      return res.status(403).json({ success: false, message: 'Access denied: Faculty privileges required.' });
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied: Faculty privileges required.'
+      });
     }
+
     next();
   }
 
   function requireStudent(req: any, res: any, next: any) {
     if (!req.user || req.user.role !== 'student') {
-      return res.status(403).json({ success: false, message: 'Access denied: Student privileges required.' });
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied: Student privileges required.'
+      });
     }
+
     next();
   }
 
@@ -118,56 +132,113 @@ async function startServer() {
         FROM users
         ORDER BY role DESC, id ASC;
       `);
-      res.json({ success: true, users });
+
+      res.json({
+        success: true,
+        users
+      });
     } catch (err: any) {
-      res.status(500).json({ success: false, message: err.message });
+      res.status(500).json({
+        success: false,
+        message: err.message
+      });
     }
   });
 
   // User Registration
   app.post('/api/auth/register', (req, res) => {
     try {
-      const { name, email, password, confirmPassword, role, department, year_class } = req.body;
+      const {
+        name,
+        email,
+        password,
+        confirmPassword,
+        role,
+        department,
+        year_class
+      } = req.body;
 
       // 1. Validate required fields
       if (!name || !email || !password || !role) {
-        return res.status(400).json({ success: false, message: 'Name, email, password, and role are required' });
+        return res.status(400).json({
+          success: false,
+          message: 'Name, email, password, and role are required'
+        });
       }
 
       // 2. Validate role
       const cleanRole = role.toLowerCase().trim();
+
       if (cleanRole !== 'student' && cleanRole !== 'faculty') {
-        return res.status(400).json({ success: false, message: 'Role must be either student or faculty' });
+        return res.status(400).json({
+          success: false,
+          message: 'Role must be either student or faculty'
+        });
       }
 
       // 3. Confirm password check if provided
       if (confirmPassword && password !== confirmPassword) {
-        return res.status(400).json({ success: false, message: 'Passwords do not match' });
+        return res.status(400).json({
+          success: false,
+          message: 'Passwords do not match'
+        });
       }
 
       // 4. Validate email format
       const cleanEmail = email.trim().toLowerCase();
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
       if (!emailRegex.test(cleanEmail)) {
-        return res.status(400).json({ success: false, message: 'Invalid email format' });
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid email format'
+        });
       }
 
       // 5. Check if email already registered
-      const existing = queryOne(db, `SELECT id FROM users WHERE LOWER(email) = ?`, [cleanEmail]);
+      const existing = queryOne(
+        db,
+        `SELECT id FROM users WHERE LOWER(email) = ?`,
+        [cleanEmail]
+      );
+
       if (existing) {
-        return res.status(400).json({ success: false, message: 'Email already registered' });
+        return res.status(400).json({
+          success: false,
+          message: 'Email already registered'
+        });
       }
 
       // 6. Secure password hashing with bcrypt
       const passwordHash = bcrypt.hashSync(password, 10);
 
-      const dept = department || (cleanRole === 'faculty' ? 'Computer Science & Engineering' : 'Computer Science & Engineering');
-      const yrClass = year_class || (cleanRole === 'faculty' ? 'Assistant Professor' : 'III Year CSE');
+      const dept =
+        department ||
+        (cleanRole === 'faculty'
+          ? 'Computer Science & Engineering'
+          : 'Computer Science & Engineering');
 
-      const result = execute(db, `
+      const yrClass =
+        year_class ||
+        (cleanRole === 'faculty'
+          ? 'Assistant Professor'
+          : 'III Year CSE');
+
+      const result = execute(
+        db,
+        `
         INSERT INTO users (name, email, password_hash, role, department, year_class)
         VALUES (?, ?, ?, ?, ?, ?)
-      `, [name.trim(), cleanEmail, passwordHash, cleanRole, dept, yrClass]);
+        `,
+        [
+          name.trim(),
+          cleanEmail,
+          passwordHash,
+          cleanRole,
+          dept,
+          yrClass
+        ]
+      );
 
       res.status(201).json({
         success: true,
@@ -176,7 +247,11 @@ async function startServer() {
       });
     } catch (err: any) {
       console.error('Registration error:', err);
-      res.status(500).json({ success: false, message: 'Internal server error' });
+
+      res.status(500).json({
+        success: false,
+        message: 'Internal server error'
+      });
     }
   });
 
@@ -184,33 +259,50 @@ async function startServer() {
   app.post('/api/auth/login', (req, res) => {
     try {
       const { email, password } = req.body;
+
       if (!email || !password) {
-        return res.status(400).json({ success: false, message: 'Email and password are required' });
+        return res.status(400).json({
+          success: false,
+          message: 'Email and password are required'
+        });
       }
 
       const cleanEmail = email.trim().toLowerCase();
-      const user = queryOne(db, `
+
+      const user = queryOne(
+        db,
+        `
         SELECT id, name, email, password_hash, role, department, year_class, created_at
         FROM users
         WHERE LOWER(email) = ?;
-      `, [cleanEmail]);
+        `,
+        [cleanEmail]
+      );
 
       if (!user) {
-        return res.status(404).json({ success: false, message: 'Account not found' });
+        return res.status(404).json({
+          success: false,
+          message: 'Account not found'
+        });
       }
 
       // Bcrypt verification
       let passwordMatch = false;
+
       try {
-        passwordMatch = bcrypt.compareSync(password, user.password_hash) ||
-                        bcrypt.compareSync(password.trim(), user.password_hash);
+        passwordMatch =
+          bcrypt.compareSync(password, user.password_hash) ||
+          bcrypt.compareSync(password.trim(), user.password_hash);
       } catch (e) {
         console.error('Bcrypt error:', e);
         passwordMatch = false;
       }
 
       if (!passwordMatch) {
-        return res.status(401).json({ success: false, message: 'Invalid email or password' });
+        return res.status(401).json({
+          success: false,
+          message: 'Invalid email or password'
+        });
       }
 
       // Generate JWT Token
@@ -227,6 +319,7 @@ async function startServer() {
       );
 
       const { password_hash: _, ...safeUser } = user;
+
       res.json({
         success: true,
         message: 'Login successful',
@@ -235,705 +328,1373 @@ async function startServer() {
       });
     } catch (err: any) {
       console.error('Login error:', err);
-      res.status(500).json({ success: false, message: 'Internal server error' });
+
+      res.status(500).json({
+        success: false,
+        message: 'Internal server error'
+      });
     }
   });
 
   // Change Password
-  app.post('/api/auth/change-password', authenticateToken, (req: any, res: any) => {
-    try {
-      const { currentPassword, newPassword, confirmPassword } = req.body;
-      if (!currentPassword || !newPassword) {
-        return res.status(400).json({ success: false, message: 'Current password and new password are required' });
+  app.post(
+    '/api/auth/change-password',
+    authenticateToken,
+    (req: any, res: any) => {
+      try {
+        const {
+          currentPassword,
+          newPassword,
+          confirmPassword
+        } = req.body;
+
+        if (!currentPassword || !newPassword) {
+          return res.status(400).json({
+            success: false,
+            message: 'Current password and new password are required'
+          });
+        }
+
+        if (
+          confirmPassword &&
+          newPassword !== confirmPassword
+        ) {
+          return res.status(400).json({
+            success: false,
+            message: 'New passwords do not match'
+          });
+        }
+
+        if (newPassword.length < 4) {
+          return res.status(400).json({
+            success: false,
+            message: 'Password must be at least 4 characters long'
+          });
+        }
+
+        const user = queryOne(
+          db,
+          `SELECT id, password_hash FROM users WHERE id = ?`,
+          [req.user.id]
+        );
+
+        if (!user) {
+          return res.status(404).json({
+            success: false,
+            message: 'User not found'
+          });
+        }
+
+        const match =
+          bcrypt.compareSync(
+            currentPassword,
+            user.password_hash
+          ) ||
+          bcrypt.compareSync(
+            currentPassword.trim(),
+            user.password_hash
+          );
+
+        if (!match) {
+          return res.status(401).json({
+            success: false,
+            message: 'Incorrect current password'
+          });
+        }
+
+        const newHash = bcrypt.hashSync(newPassword, 10);
+
+        execute(
+          db,
+          `
+          UPDATE users
+          SET password_hash = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+          `,
+          [newHash, req.user.id]
+        );
+
+        res.json({
+          success: true,
+          message: 'Password updated successfully'
+        });
+      } catch (err: any) {
+        res.status(500).json({
+          success: false,
+          message: err.message
+        });
       }
-
-      if (confirmPassword && newPassword !== confirmPassword) {
-        return res.status(400).json({ success: false, message: 'New passwords do not match' });
-      }
-
-      if (newPassword.length < 4) {
-        return res.status(400).json({ success: false, message: 'Password must be at least 4 characters long' });
-      }
-
-      const user = queryOne(db, `SELECT id, password_hash FROM users WHERE id = ?`, [req.user.id]);
-      if (!user) {
-        return res.status(404).json({ success: false, message: 'User not found' });
-      }
-
-      const match = bcrypt.compareSync(currentPassword, user.password_hash) ||
-                    bcrypt.compareSync(currentPassword.trim(), user.password_hash);
-      if (!match) {
-        return res.status(401).json({ success: false, message: 'Incorrect current password' });
-      }
-
-      const newHash = bcrypt.hashSync(newPassword, 10);
-      execute(db, `UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [newHash, req.user.id]);
-
-      res.json({
-        success: true,
-        message: 'Password updated successfully'
-      });
-    } catch (err: any) {
-      res.status(500).json({ success: false, message: err.message });
     }
-  });
+  );
 
   // ----------------------------------------------------
   // 2. PROFILE API ROUTES
   // ----------------------------------------------------
 
   // Get current user's profile
-  app.get('/api/profile', authenticateToken, (req: any, res: any) => {
-    try {
-      const user = queryOne(db, `
-        SELECT id, name, email, role, department, year_class, created_at, updated_at
-        FROM users
-        WHERE id = ?;
-      `, [req.user.id]);
+  app.get(
+    '/api/profile',
+    authenticateToken,
+    (req: any, res: any) => {
+      try {
+        const user = queryOne(
+          db,
+          `
+          SELECT id, name, email, role, department, year_class, created_at, updated_at
+          FROM users
+          WHERE id = ?;
+          `,
+          [req.user.id]
+        );
 
-      if (!user) {
-        return res.status(404).json({ success: false, message: 'Profile not found' });
+        if (!user) {
+          return res.status(404).json({
+            success: false,
+            message: 'Profile not found'
+          });
+        }
+
+        res.json({
+          success: true,
+          profile: user
+        });
+      } catch (err: any) {
+        res.status(500).json({
+          success: false,
+          message: err.message
+        });
       }
-
-      res.json({ success: true, profile: user });
-    } catch (err: any) {
-      res.status(500).json({ success: false, message: err.message });
     }
-  });
+  );
 
-  // Edit profile (Name, Department, Year/Class - role and email are protected)
-  app.put('/api/profile', authenticateToken, (req: any, res: any) => {
-    try {
-      const { name, department, year_class } = req.body;
-      if (!name || !name.trim()) {
-        return res.status(400).json({ success: false, message: 'Name cannot be empty' });
+  // Edit profile
+  app.put(
+    '/api/profile',
+    authenticateToken,
+    (req: any, res: any) => {
+      try {
+        const {
+          name,
+          department,
+          year_class
+        } = req.body;
+
+        if (!name || !name.trim()) {
+          return res.status(400).json({
+            success: false,
+            message: 'Name cannot be empty'
+          });
+        }
+
+        execute(
+          db,
+          `
+          UPDATE users
+          SET name = ?, department = ?, year_class = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?;
+          `,
+          [
+            name.trim(),
+            department || '',
+            year_class || '',
+            req.user.id
+          ]
+        );
+
+        const updatedUser = queryOne(
+          db,
+          `
+          SELECT id, name, email, role, department, year_class, created_at, updated_at
+          FROM users
+          WHERE id = ?;
+          `,
+          [req.user.id]
+        );
+
+        res.json({
+          success: true,
+          message: 'Profile updated successfully',
+          profile: updatedUser
+        });
+      } catch (err: any) {
+        res.status(500).json({
+          success: false,
+          message: err.message
+        });
       }
-
-      execute(db, `
-        UPDATE users
-        SET name = ?, department = ?, year_class = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?;
-      `, [name.trim(), department || '', year_class || '', req.user.id]);
-
-      const updatedUser = queryOne(db, `
-        SELECT id, name, email, role, department, year_class, created_at, updated_at
-        FROM users
-        WHERE id = ?;
-      `, [req.user.id]);
-
-      res.json({
-        success: true,
-        message: 'Profile updated successfully',
-        profile: updatedUser
-      });
-    } catch (err: any) {
-      res.status(500).json({ success: false, message: err.message });
     }
-  });
+  );
 
   // ----------------------------------------------------
-  // 3. FACULTY API ROUTES (Strict Role Protection)
+  // 3. FACULTY API ROUTES
   // ----------------------------------------------------
 
   // Faculty Dashboard Summary
-  app.get('/api/faculty/dashboard', authenticateToken, requireFaculty, (req: any, res: any) => {
-    try {
-      const facultyId = req.user.id;
+  app.get(
+    '/api/faculty/dashboard',
+    authenticateToken,
+    requireFaculty,
+    (req: any, res: any) => {
+      try {
+        const facultyId = req.user.id;
 
-      // Total assessments created by this faculty
-      const assessmentsCountRes = queryOne(db, `
-        SELECT COUNT(*) as count FROM assessments WHERE faculty_id = ?
-      `, [facultyId]);
-      const totalAssessments = assessmentsCountRes ? assessmentsCountRes.count : 0;
+        const assessmentsCountRes = queryOne(
+          db,
+          `
+          SELECT COUNT(*) as count
+          FROM assessments
+          WHERE faculty_id = ?
+          `,
+          [facultyId]
+        );
 
-      // Total distinct students assigned
-      const studentsCountRes = queryOne(db, `
-        SELECT COUNT(DISTINCT ast.student_id) as count
-        FROM assessment_students ast
-        JOIN assessments a ON ast.assessment_id = a.id
-        WHERE a.faculty_id = ?;
-      `, [facultyId]);
-      const totalStudents = studentsCountRes ? studentsCountRes.count : 0;
+        const totalAssessments =
+          assessmentsCountRes
+            ? assessmentsCountRes.count
+            : 0;
 
-      // Total submissions received
-      const submissionsCountRes = queryOne(db, `
-        SELECT COUNT(*) as count
-        FROM submissions s
-        JOIN assessments a ON s.assessment_id = a.id
-        WHERE a.faculty_id = ?;
-      `, [facultyId]);
-      const totalSubmissions = submissionsCountRes ? submissionsCountRes.count : 0;
+        const studentsCountRes = queryOne(
+          db,
+          `
+          SELECT COUNT(DISTINCT ast.student_id) as count
+          FROM assessment_students ast
+          JOIN assessments a
+            ON ast.assessment_id = a.id
+          WHERE a.faculty_id = ?;
+          `,
+          [facultyId]
+        );
 
-      // Total expected assigned instances
-      const expectedCountRes = queryOne(db, `
-        SELECT COUNT(*) as count
-        FROM assessment_students ast
-        JOIN assessments a ON ast.assessment_id = a.id
-        WHERE a.faculty_id = ?;
-      `, [facultyId]);
-      const totalAssignedInstances = expectedCountRes ? expectedCountRes.count : 0;
-      const pendingSubmissions = Math.max(0, totalAssignedInstances - totalSubmissions);
+        const totalStudents =
+          studentsCountRes
+            ? studentsCountRes.count
+            : 0;
 
-      // Recent assessments
-      const recentAssessments = queryAll(db, `
-        SELECT a.id, a.title, a.subject, a.deadline, a.created_at,
-               (SELECT COUNT(*) FROM assessment_students ast WHERE ast.assessment_id = a.id) as assigned_count,
-               (SELECT COUNT(*) FROM submissions s WHERE s.assessment_id = a.id) as submitted_count
-        FROM assessments a
-        WHERE a.faculty_id = ?
-        ORDER BY a.id DESC
-        LIMIT 5;
-      `, [facultyId]);
+        const submissionsCountRes = queryOne(
+          db,
+          `
+          SELECT COUNT(*) as count
+          FROM submissions s
+          JOIN assessments a
+            ON s.assessment_id = a.id
+          WHERE a.faculty_id = ?;
+          `,
+          [facultyId]
+        );
 
-      res.json({
-        success: true,
-        summary: {
-          totalAssessments,
-          totalStudents,
-          totalSubmissions,
-          pendingSubmissions
-        },
-        recentAssessments
-      });
-    } catch (err: any) {
-      res.status(500).json({ success: false, message: err.message });
-    }
-  });
+        const totalSubmissions =
+          submissionsCountRes
+            ? submissionsCountRes.count
+            : 0;
 
-  // Get all registered students for multi-select assignment distribution
-  app.get('/api/faculty/students', authenticateToken, requireFaculty, (_req: any, res: any) => {
-    try {
-      const students = queryAll(db, `
-        SELECT id, name, email, department, year_class, created_at,
-               (SELECT COUNT(*) FROM assessment_students ast WHERE ast.student_id = users.id) as assigned_count,
-               (SELECT COUNT(*) FROM submissions s WHERE s.student_id = users.id) as submitted_count
-        FROM users
-        WHERE role = 'student'
-        ORDER BY name ASC;
-      `);
-      res.json({ success: true, students });
-    } catch (err: any) {
-      res.status(500).json({ success: false, message: err.message });
-    }
-  });
+        const expectedCountRes = queryOne(
+          db,
+          `
+          SELECT COUNT(*) as count
+          FROM assessment_students ast
+          JOIN assessments a
+            ON ast.assessment_id = a.id
+          WHERE a.faculty_id = ?;
+          `,
+          [facultyId]
+        );
 
-  // Faculty can manually add a student to their college roster
-  app.post('/api/faculty/students', authenticateToken, requireFaculty, (req: any, res: any) => {
-    try {
-      const { name, email, department, year_class, password } = req.body;
-      if (!name || !name.trim() || !email || !email.trim()) {
-        return res.status(400).json({ success: false, message: 'Student Name and Email are required' });
+        const totalAssignedInstances =
+          expectedCountRes
+            ? expectedCountRes.count
+            : 0;
+
+        const pendingSubmissions = Math.max(
+          0,
+          totalAssignedInstances - totalSubmissions
+        );
+
+        const recentAssessments = queryAll(
+          db,
+          `
+          SELECT
+            a.id,
+            a.title,
+            a.subject,
+            a.deadline,
+            a.created_at,
+            (
+              SELECT COUNT(*)
+              FROM assessment_students ast
+              WHERE ast.assessment_id = a.id
+            ) as assigned_count,
+            (
+              SELECT COUNT(*)
+              FROM submissions s
+              WHERE s.assessment_id = a.id
+            ) as submitted_count
+          FROM assessments a
+          WHERE a.faculty_id = ?
+          ORDER BY a.id DESC
+          LIMIT 5;
+          `,
+          [facultyId]
+        );
+
+        res.json({
+          success: true,
+          summary: {
+            totalAssessments,
+            totalStudents,
+            totalSubmissions,
+            pendingSubmissions
+          },
+          recentAssessments
+        });
+      } catch (err: any) {
+        res.status(500).json({
+          success: false,
+          message: err.message
+        });
       }
+    }
+  );
 
-      const cleanEmail = email.trim().toLowerCase();
-      const existing = queryOne(db, 'SELECT id FROM users WHERE LOWER(email) = ?', [cleanEmail]);
-      if (existing) {
-        return res.status(400).json({ success: false, message: 'A user with this email already exists' });
+  // Get all registered students
+  app.get(
+    '/api/faculty/students',
+    authenticateToken,
+    requireFaculty,
+    (_req: any, res: any) => {
+      try {
+        const students = queryAll(
+          db,
+          `
+          SELECT
+            id,
+            name,
+            email,
+            department,
+            year_class,
+            created_at,
+            (
+              SELECT COUNT(*)
+              FROM assessment_students ast
+              WHERE ast.student_id = users.id
+            ) as assigned_count,
+            (
+              SELECT COUNT(*)
+              FROM submissions s
+              WHERE s.student_id = users.id
+            ) as submitted_count
+          FROM users
+          WHERE role = 'student'
+          ORDER BY name ASC;
+          `
+        );
+
+        res.json({
+          success: true,
+          students
+        });
+      } catch (err: any) {
+        res.status(500).json({
+          success: false,
+          message: err.message
+        });
       }
+    }
+  );
 
-      const rawPassword = password && password.trim() ? password.trim() : 'Student123';
-      const hash = bcrypt.hashSync(rawPassword, 10);
+  // Faculty can manually add a student
+  app.post(
+    '/api/faculty/students',
+    authenticateToken,
+    requireFaculty,
+    (req: any, res: any) => {
+      try {
+        const {
+          name,
+          email,
+          department,
+          year_class,
+          password
+        } = req.body;
 
-      const result = execute(db, `
-        INSERT INTO users (name, email, password_hash, role, department, year_class)
-        VALUES (?, ?, ?, 'student', ?, ?);
-      `, [
-        name.trim(),
-        cleanEmail,
-        hash,
-        department?.trim() || 'Computer Science & Engineering',
-        year_class?.trim() || 'III Year CSE'
-      ]);
-
-      res.status(201).json({
-        success: true,
-        message: `Student "${name.trim()}" added to roster with password: ${rawPassword}`,
-        student: {
-          id: result.lastInsertRowId,
-          name: name.trim(),
-          email: cleanEmail,
-          department: department?.trim() || 'Computer Science & Engineering',
-          year_class: year_class?.trim() || 'III Year CSE'
+        if (
+          !name ||
+          !name.trim() ||
+          !email ||
+          !email.trim()
+        ) {
+          return res.status(400).json({
+            success: false,
+            message: 'Student Name and Email are required'
+          });
         }
-      });
-    } catch (err: any) {
-      res.status(500).json({ success: false, message: err.message });
-    }
-  });
 
-  // Faculty can remove a student from the roster
-  app.delete('/api/faculty/students/:id', authenticateToken, requireFaculty, (req: any, res: any) => {
-    try {
-      const studentId = parseInt(req.params.id, 10);
-      execute(db, 'DELETE FROM users WHERE id = ? AND role = "student"', [studentId]);
-      res.json({ success: true, message: 'Student removed from class roster' });
-    } catch (err: any) {
-      res.status(500).json({ success: false, message: err.message });
-    }
-  });
+        const cleanEmail =
+          email.trim().toLowerCase();
 
-  // Create & Push Assessment to selected students
-  app.post('/api/faculty/assessments', authenticateToken, requireFaculty, upload.single('attachment'), (req: any, res: any) => {
-    try {
-      const facultyId = req.user.id;
-      const { title, description, subject, deadline, student_ids } = req.body;
+        const existing = queryOne(
+          db,
+          'SELECT id FROM users WHERE LOWER(email) = ?',
+          [cleanEmail]
+        );
 
-      if (!title || !description || !subject || !deadline) {
-        return res.status(400).json({ success: false, message: 'Title, description, subject, and deadline are required' });
-      }
-
-      // Parse student_ids (can be JSON string or array)
-      let parsedStudentIds: number[] = [];
-      if (typeof student_ids === 'string') {
-        try {
-          parsedStudentIds = JSON.parse(student_ids);
-        } catch {
-          parsedStudentIds = student_ids.split(',').map((id: string) => parseInt(id.trim(), 10)).filter(Boolean);
+        if (existing) {
+          return res.status(400).json({
+            success: false,
+            message: 'A user with this email already exists'
+          });
         }
-      } else if (Array.isArray(student_ids)) {
-        parsedStudentIds = student_ids.map((id: any) => parseInt(id, 10)).filter(Boolean);
+
+        const rawPassword =
+          password && password.trim()
+            ? password.trim()
+            : 'Student123';
+
+        const hash =
+          bcrypt.hashSync(rawPassword, 10);
+
+        const result = execute(
+          db,
+          `
+          INSERT INTO users
+          (name, email, password_hash, role, department, year_class)
+          VALUES (?, ?, ?, 'student', ?, ?);
+          `,
+          [
+            name.trim(),
+            cleanEmail,
+            hash,
+            department?.trim() ||
+              'Computer Science & Engineering',
+            year_class?.trim() ||
+              'III Year CSE'
+          ]
+        );
+
+        res.status(201).json({
+          success: true,
+          message: `Student "${name.trim()}" added to roster with password: ${rawPassword}`,
+          student: {
+            id: result.lastInsertRowId,
+            name: name.trim(),
+            email: cleanEmail,
+            department:
+              department?.trim() ||
+              'Computer Science & Engineering',
+            year_class:
+              year_class?.trim() ||
+              'III Year CSE'
+          }
+        });
+      } catch (err: any) {
+        res.status(500).json({
+          success: false,
+          message: err.message
+        });
       }
+    }
+  );
 
-      if (!parsedStudentIds || parsedStudentIds.length === 0) {
-        return res.status(400).json({ success: false, message: 'Please select at least one student to receive this assessment' });
+  // Faculty can remove a student
+  app.delete(
+    '/api/faculty/students/:id',
+    authenticateToken,
+    requireFaculty,
+    (req: any, res: any) => {
+      try {
+        const studentId =
+          parseInt(req.params.id, 10);
+
+        execute(
+          db,
+          'DELETE FROM users WHERE id = ? AND role = "student"',
+          [studentId]
+        );
+
+        res.json({
+          success: true,
+          message: 'Student removed from class roster'
+        });
+      } catch (err: any) {
+        res.status(500).json({
+          success: false,
+          message: err.message
+        });
       }
+    }
+  );
 
-      const attachmentPath = req.file ? req.file.filename : null;
+  // Create & Push Assessment
+  app.post(
+    '/api/faculty/assessments',
+    authenticateToken,
+    requireFaculty,
+    upload.single('attachment'),
+    (req: any, res: any) => {
+      try {
+        const facultyId = req.user.id;
 
-      // Insert Assessment
-      const assessmentResult = execute(db, `
-        INSERT INTO assessments (faculty_id, title, description, subject, deadline, attachment_path)
-        VALUES (?, ?, ?, ?, ?, ?);
-      `, [facultyId, title.trim(), description.trim(), subject.trim(), deadline, attachmentPath]);
+        const {
+          title,
+          description,
+          subject,
+          deadline,
+          student_ids
+        } = req.body;
 
-      const assessmentId = assessmentResult.lastInsertRowId;
+        if (
+          !title ||
+          !description ||
+          !subject ||
+          !deadline
+        ) {
+          return res.status(400).json({
+            success: false,
+            message:
+              'Title, description, subject, and deadline are required'
+          });
+        }
 
-      // Insert assigned students into mapping table assessment_students
-      for (const studentId of parsedStudentIds) {
-        execute(db, `
-          INSERT OR IGNORE INTO assessment_students (assessment_id, student_id)
-          VALUES (?, ?);
-        `, [assessmentId, studentId]);
+        let parsedStudentIds: number[] = [];
+
+        if (typeof student_ids === 'string') {
+          try {
+            parsedStudentIds =
+              JSON.parse(student_ids);
+          } catch {
+            parsedStudentIds =
+              student_ids
+                .split(',')
+                .map((id: string) =>
+                  parseInt(id.trim(), 10)
+                )
+                .filter(Boolean);
+          }
+        } else if (Array.isArray(student_ids)) {
+          parsedStudentIds =
+            student_ids
+              .map((id: any) =>
+                parseInt(id, 10)
+              )
+              .filter(Boolean);
+        }
+
+        if (
+          !parsedStudentIds ||
+          parsedStudentIds.length === 0
+        ) {
+          return res.status(400).json({
+            success: false,
+            message:
+              'Please select at least one student to receive this assessment'
+          });
+        }
+
+        const attachmentPath =
+          req.file
+            ? req.file.filename
+            : null;
+
+        const assessmentResult = execute(
+          db,
+          `
+          INSERT INTO assessments
+          (faculty_id, title, description, subject, deadline, attachment_path)
+          VALUES (?, ?, ?, ?, ?, ?);
+          `,
+          [
+            facultyId,
+            title.trim(),
+            description.trim(),
+            subject.trim(),
+            deadline,
+            attachmentPath
+          ]
+        );
+
+        const assessmentId =
+          assessmentResult.lastInsertRowId;
+
+        for (const studentId of parsedStudentIds) {
+          execute(
+            db,
+            `
+            INSERT OR IGNORE INTO assessment_students
+            (assessment_id, student_id)
+            VALUES (?, ?);
+            `,
+            [assessmentId, studentId]
+          );
+        }
+
+        res.status(201).json({
+          success: true,
+          message:
+            'Assessment created and pushed successfully to selected students',
+          assessment_id: assessmentId,
+          assigned_count:
+            parsedStudentIds.length
+        });
+      } catch (err: any) {
+        console.error(
+          'Assessment creation error:',
+          err
+        );
+
+        res.status(500).json({
+          success: false,
+          message: err.message
+        });
       }
-
-      res.status(201).json({
-        success: true,
-        message: 'Assessment created and pushed successfully to selected students',
-        assessment_id: assessmentId,
-        assigned_count: parsedStudentIds.length
-      });
-    } catch (err: any) {
-      console.error('Assessment creation error:', err);
-      res.status(500).json({ success: false, message: err.message });
     }
-  });
+  );
 
-  // Get all assessments created by this faculty
-  app.get('/api/faculty/assessments', authenticateToken, requireFaculty, (req: any, res: any) => {
-    try {
-      const facultyId = req.user.id;
-      const assessments = queryAll(db, `
-        SELECT a.id, a.faculty_id, a.title, a.description, a.subject, a.deadline, a.attachment_path, a.created_at,
-               (SELECT COUNT(*) FROM assessment_students ast WHERE ast.assessment_id = a.id) as assigned_count,
-               (SELECT COUNT(*) FROM submissions s WHERE s.assessment_id = a.id) as submitted_count
-        FROM assessments a
-        WHERE a.faculty_id = ?
-        ORDER BY a.id DESC;
-      `, [facultyId]);
+  // Get all assessments created by faculty
+  app.get(
+    '/api/faculty/assessments',
+    authenticateToken,
+    requireFaculty,
+    (req: any, res: any) => {
+      try {
+        const facultyId = req.user.id;
 
-      res.json({ success: true, assessments });
-    } catch (err: any) {
-      res.status(500).json({ success: false, message: err.message });
-    }
-  });
+        const assessments = queryAll(
+          db,
+          `
+          SELECT
+            a.id,
+            a.faculty_id,
+            a.title,
+            a.description,
+            a.subject,
+            a.deadline,
+            a.attachment_path,
+            a.created_at,
+            (
+              SELECT COUNT(*)
+              FROM assessment_students ast
+              WHERE ast.assessment_id = a.id
+            ) as assigned_count,
+            (
+              SELECT COUNT(*)
+              FROM submissions s
+              WHERE s.assessment_id = a.id
+            ) as submitted_count
+          FROM assessments a
+          WHERE a.faculty_id = ?
+          ORDER BY a.id DESC;
+          `,
+          [facultyId]
+        );
 
-  // Get single assessment details (ensures only the owner faculty can access)
-  app.get('/api/faculty/assessments/:id', authenticateToken, requireFaculty, (req: any, res: any) => {
-    try {
-      const assessmentId = parseInt(req.params.id, 10);
-      const facultyId = req.user.id;
-
-      const assessment = queryOne(db, `
-        SELECT * FROM assessments WHERE id = ? AND faculty_id = ?;
-      `, [assessmentId, facultyId]);
-
-      if (!assessment) {
-        return res.status(404).json({ success: false, message: 'Assessment not found or access denied' });
+        res.json({
+          success: true,
+          assessments
+        });
+      } catch (err: any) {
+        res.status(500).json({
+          success: false,
+          message: err.message
+        });
       }
-
-      res.json({ success: true, assessment });
-    } catch (err: any) {
-      res.status(500).json({ success: false, message: err.message });
     }
-  });
+  );
 
-  // Get submissions for a specific assessment (Faculty view)
-  // Shows EVERY assigned student with their status: Submitted, Late, or Pending
-  app.get('/api/faculty/assessments/:id/submissions', authenticateToken, requireFaculty, (req: any, res: any) => {
-    try {
-      const assessmentId = parseInt(req.params.id, 10);
-      const facultyId = req.user.id;
+  // Get single assessment details
+  app.get(
+    '/api/faculty/assessments/:id',
+    authenticateToken,
+    requireFaculty,
+    (req: any, res: any) => {
+      try {
+        const assessmentId =
+          parseInt(req.params.id, 10);
 
-      // Verify ownership
-      const assessment = queryOne(db, `
-        SELECT * FROM assessments WHERE id = ? AND faculty_id = ?;
-      `, [assessmentId, facultyId]);
+        const facultyId = req.user.id;
 
-      if (!assessment) {
-        return res.status(403).json({ success: false, message: 'Access denied: You can only view submissions for your own assessments' });
+        const assessment = queryOne(
+          db,
+          `
+          SELECT *
+          FROM assessments
+          WHERE id = ? AND faculty_id = ?;
+          `,
+          [assessmentId, facultyId]
+        );
+
+        if (!assessment) {
+          return res.status(404).json({
+            success: false,
+            message:
+              'Assessment not found or access denied'
+          });
+        }
+
+        res.json({
+          success: true,
+          assessment
+        });
+      } catch (err: any) {
+        res.status(500).json({
+          success: false,
+          message: err.message
+        });
       }
-
-      // Get all assigned students joined with their submission if any
-      const submissions = queryAll(db, `
-        SELECT 
-          u.id as student_id,
-          u.name as student_name,
-          u.email as student_email,
-          u.department as student_department,
-          u.year_class as student_class,
-          ast.assigned_at,
-          s.id as submission_id,
-          s.file_name,
-          s.file_path,
-          s.submitted_at,
-          COALESCE(s.status, 'Pending') as status
-        FROM assessment_students ast
-        JOIN users u ON ast.student_id = u.id
-        LEFT JOIN submissions s ON (ast.assessment_id = s.assessment_id AND ast.student_id = s.student_id)
-        WHERE ast.assessment_id = ?
-        ORDER BY s.submitted_at DESC, u.name ASC;
-      `, [assessmentId]);
-
-      res.json({
-        success: true,
-        assessment,
-        submissions
-      });
-    } catch (err: any) {
-      res.status(500).json({ success: false, message: err.message });
     }
-  });
+  );
 
-  // Get all submissions across all assessments of this faculty
-  app.get('/api/faculty/submissions', authenticateToken, requireFaculty, (req: any, res: any) => {
-    try {
-      const facultyId = req.user.id;
-      const submissions = queryAll(db, `
-        SELECT 
-          s.id as submission_id,
-          s.assessment_id,
-          s.student_id,
-          s.file_name,
-          s.file_path,
-          s.submitted_at,
-          s.status,
-          a.title as assessment_title,
-          a.subject as assessment_subject,
-          a.deadline,
-          u.name as student_name,
-          u.email as student_email
-        FROM submissions s
-        JOIN assessments a ON s.assessment_id = a.id
-        JOIN users u ON s.student_id = u.id
-        WHERE a.faculty_id = ?
-        ORDER BY s.submitted_at DESC;
-      `, [facultyId]);
+  // Get submissions for a specific assessment
+  app.get(
+    '/api/faculty/assessments/:id/submissions',
+    authenticateToken,
+    requireFaculty,
+    (req: any, res: any) => {
+      try {
+        const assessmentId =
+          parseInt(req.params.id, 10);
 
-      res.json({ success: true, submissions });
-    } catch (err: any) {
-      res.status(500).json({ success: false, message: err.message });
+        const facultyId = req.user.id;
+
+        const assessment = queryOne(
+          db,
+          `
+          SELECT *
+          FROM assessments
+          WHERE id = ? AND faculty_id = ?;
+          `,
+          [assessmentId, facultyId]
+        );
+
+        if (!assessment) {
+          return res.status(403).json({
+            success: false,
+            message:
+              'Access denied: You can only view submissions for your own assessments'
+          });
+        }
+
+        const submissions = queryAll(
+          db,
+          `
+          SELECT
+            u.id as student_id,
+            u.name as student_name,
+            u.email as student_email,
+            u.department as student_department,
+            u.year_class as student_class,
+            ast.assigned_at,
+            s.id as submission_id,
+            s.file_name,
+            s.file_path,
+            s.submitted_at,
+            COALESCE(s.status, 'Pending') as status
+          FROM assessment_students ast
+          JOIN users u
+            ON ast.student_id = u.id
+          LEFT JOIN submissions s
+            ON (
+              ast.assessment_id = s.assessment_id
+              AND ast.student_id = s.student_id
+            )
+          WHERE ast.assessment_id = ?
+          ORDER BY s.submitted_at DESC, u.name ASC;
+          `,
+          [assessmentId]
+        );
+
+        res.json({
+          success: true,
+          assessment,
+          submissions
+        });
+      } catch (err: any) {
+        res.status(500).json({
+          success: false,
+          message: err.message
+        });
+      }
     }
-  });
+  );
+
+  // Get all submissions across faculty assessments
+  app.get(
+    '/api/faculty/submissions',
+    authenticateToken,
+    requireFaculty,
+    (req: any, res: any) => {
+      try {
+        const facultyId = req.user.id;
+
+        const submissions = queryAll(
+          db,
+          `
+          SELECT
+            s.id as submission_id,
+            s.assessment_id,
+            s.student_id,
+            s.file_name,
+            s.file_path,
+            s.submitted_at,
+            s.status,
+            a.title as assessment_title,
+            a.subject as assessment_subject,
+            a.deadline,
+            u.name as student_name,
+            u.email as student_email
+          FROM submissions s
+          JOIN assessments a
+            ON s.assessment_id = a.id
+          JOIN users u
+            ON s.student_id = u.id
+          WHERE a.faculty_id = ?
+          ORDER BY s.submitted_at DESC;
+          `,
+          [facultyId]
+        );
+
+        res.json({
+          success: true,
+          submissions
+        });
+      } catch (err: any) {
+        res.status(500).json({
+          success: false,
+          message: err.message
+        });
+      }
+    }
+  );
 
   // ----------------------------------------------------
-  // 4. STUDENT API ROUTES (Strict Role Protection)
+  // 4. STUDENT API ROUTES
   // ----------------------------------------------------
 
   // Student Dashboard Summary
-  app.get('/api/student/dashboard', authenticateToken, requireStudent, (req: any, res: any) => {
-    try {
-      const studentId = req.user.id;
+  app.get(
+    '/api/student/dashboard',
+    authenticateToken,
+    requireStudent,
+    (req: any, res: any) => {
+      try {
+        const studentId = req.user.id;
 
-      // Total assigned assessments
-      const totalCountRes = queryOne(db, `
-        SELECT COUNT(*) as count FROM assessment_students WHERE student_id = ?;
-      `, [studentId]);
-      const totalAssessments = totalCountRes ? totalCountRes.count : 0;
+        const totalCountRes = queryOne(
+          db,
+          `
+          SELECT COUNT(*) as count
+          FROM assessment_students
+          WHERE student_id = ?;
+          `,
+          [studentId]
+        );
 
-      // Submissions counts by status
-      const submittedCountRes = queryOne(db, `
-        SELECT COUNT(*) as count FROM submissions WHERE student_id = ? AND status = 'Submitted';
-      `, [studentId]);
-      const submittedCount = submittedCountRes ? submittedCountRes.count : 0;
+        const totalAssessments =
+          totalCountRes
+            ? totalCountRes.count
+            : 0;
 
-      const lateCountRes = queryOne(db, `
-        SELECT COUNT(*) as count FROM submissions WHERE student_id = ? AND status = 'Late';
-      `, [studentId]);
-      const lateCount = lateCountRes ? lateCountRes.count : 0;
+        const submittedCountRes =
+          queryOne(
+            db,
+            `
+            SELECT COUNT(*) as count
+            FROM submissions
+            WHERE student_id = ?
+            AND status = 'Submitted';
+            `,
+            [studentId]
+          );
 
-      const pendingCount = Math.max(0, totalAssessments - (submittedCount + lateCount));
+        const submittedCount =
+          submittedCountRes
+            ? submittedCountRes.count
+            : 0;
 
-      // Recent assigned assessments with status
-      const assessments = queryAll(db, `
-        SELECT 
-          a.id,
-          a.title,
-          a.subject,
-          a.deadline,
-          f.name as faculty_name,
-          COALESCE(s.status, 'Pending') as status,
-          s.submitted_at
-        FROM assessment_students ast
-        JOIN assessments a ON ast.assessment_id = a.id
-        JOIN users f ON a.faculty_id = f.id
-        LEFT JOIN submissions s ON (ast.assessment_id = s.assessment_id AND s.student_id = ?)
-        WHERE ast.student_id = ?
-        ORDER BY a.deadline ASC
-        LIMIT 6;
-      `, [studentId, studentId]);
+        const lateCountRes = queryOne(
+          db,
+          `
+          SELECT COUNT(*) as count
+          FROM submissions
+          WHERE student_id = ?
+          AND status = 'Late';
+          `,
+          [studentId]
+        );
 
-      res.json({
-        success: true,
-        summary: {
-          totalAssessments,
-          pending: pendingCount,
-          submitted: submittedCount,
-          late: lateCount
-        },
-        assessments
-      });
-    } catch (err: any) {
-      res.status(500).json({ success: false, message: err.message });
+        const lateCount =
+          lateCountRes
+            ? lateCountRes.count
+            : 0;
+
+        const pendingCount = Math.max(
+          0,
+          totalAssessments -
+            (submittedCount + lateCount)
+        );
+
+        const assessments = queryAll(
+          db,
+          `
+          SELECT
+            a.id,
+            a.title,
+            a.subject,
+            a.deadline,
+            f.name as faculty_name,
+            COALESCE(s.status, 'Pending') as status,
+            s.submitted_at
+          FROM assessment_students ast
+          JOIN assessments a
+            ON ast.assessment_id = a.id
+          JOIN users f
+            ON a.faculty_id = f.id
+          LEFT JOIN submissions s
+            ON (
+              ast.assessment_id = s.assessment_id
+              AND s.student_id = ?
+            )
+          WHERE ast.student_id = ?
+          ORDER BY a.deadline ASC
+          LIMIT 6;
+          `,
+          [studentId, studentId]
+        );
+
+        res.json({
+          success: true,
+          summary: {
+            totalAssessments,
+            pending: pendingCount,
+            submitted: submittedCount,
+            late: lateCount
+          },
+          assessments
+        });
+      } catch (err: any) {
+        res.status(500).json({
+          success: false,
+          message: err.message
+        });
+      }
     }
-  });
+  );
 
-  // Get all assessments assigned to this student (Student sees ONLY their assigned assessments)
-  app.get('/api/student/assessments', authenticateToken, requireStudent, (req: any, res: any) => {
-    try {
-      const studentId = req.user.id;
+  // Get all assessments assigned to student
+  app.get(
+    '/api/student/assessments',
+    authenticateToken,
+    requireStudent,
+    (req: any, res: any) => {
+      try {
+        const studentId = req.user.id;
 
-      const assessments = queryAll(db, `
-        SELECT 
-          a.id,
-          a.title,
-          a.description,
-          a.subject,
-          a.deadline,
-          a.attachment_path,
-          a.created_at,
-          f.name as faculty_name,
-          f.email as faculty_email,
-          COALESCE(s.status, 'Pending') as status,
-          s.id as submission_id,
-          s.file_name as submitted_file_name,
-          s.file_path as submitted_file_path,
-          s.submitted_at
-        FROM assessment_students ast
-        JOIN assessments a ON ast.assessment_id = a.id
-        JOIN users f ON a.faculty_id = f.id
-        LEFT JOIN submissions s ON (ast.assessment_id = s.assessment_id AND s.student_id = ?)
-        WHERE ast.student_id = ?
-        ORDER BY a.id DESC;
-      `, [studentId, studentId]);
+        const assessments = queryAll(
+          db,
+          `
+          SELECT
+            a.id,
+            a.title,
+            a.description,
+            a.subject,
+            a.deadline,
+            a.attachment_path,
+            a.created_at,
+            f.name as faculty_name,
+            f.email as faculty_email,
+            COALESCE(s.status, 'Pending') as status,
+            s.id as submission_id,
+            s.file_name as submitted_file_name,
+            s.file_path as submitted_file_path,
+            s.submitted_at
+          FROM assessment_students ast
+          JOIN assessments a
+            ON ast.assessment_id = a.id
+          JOIN users f
+            ON a.faculty_id = f.id
+          LEFT JOIN submissions s
+            ON (
+              ast.assessment_id = s.assessment_id
+              AND s.student_id = ?
+            )
+          WHERE ast.student_id = ?
+          ORDER BY a.id DESC;
+          `,
+          [studentId, studentId]
+        );
 
-      res.json({ success: true, assessments });
-    } catch (err: any) {
-      res.status(500).json({ success: false, message: err.message });
+        res.json({
+          success: true,
+          assessments
+        });
+      } catch (err: any) {
+        res.status(500).json({
+          success: false,
+          message: err.message
+        });
+      }
     }
-  });
+  );
 
   // Get specific assessment details for student
-  app.get('/api/student/assessments/:id', authenticateToken, requireStudent, (req: any, res: any) => {
-    try {
-      const assessmentId = parseInt(req.params.id, 10);
-      const studentId = req.user.id;
+  app.get(
+    '/api/student/assessments/:id',
+    authenticateToken,
+    requireStudent,
+    (req: any, res: any) => {
+      try {
+        const assessmentId =
+          parseInt(req.params.id, 10);
 
-      // Verify assignment
-      const assigned = queryOne(db, `
-        SELECT * FROM assessment_students WHERE assessment_id = ? AND student_id = ?;
-      `, [assessmentId, studentId]);
+        const studentId = req.user.id;
 
-      if (!assigned) {
-        return res.status(403).json({ success: false, message: 'Access denied: You are not assigned to this assessment' });
+        const assigned = queryOne(
+          db,
+          `
+          SELECT *
+          FROM assessment_students
+          WHERE assessment_id = ?
+          AND student_id = ?;
+          `,
+          [assessmentId, studentId]
+        );
+
+        if (!assigned) {
+          return res.status(403).json({
+            success: false,
+            message:
+              'Access denied: You are not assigned to this assessment'
+          });
+        }
+
+        const assessment = queryOne(
+          db,
+          `
+          SELECT
+            a.id,
+            a.title,
+            a.description,
+            a.subject,
+            a.deadline,
+            a.attachment_path,
+            a.created_at,
+            f.name as faculty_name,
+            f.email as faculty_email,
+            COALESCE(s.status, 'Pending') as status,
+            s.id as submission_id,
+            s.file_name as submitted_file_name,
+            s.file_path as submitted_file_path,
+            s.submitted_at
+          FROM assessments a
+          JOIN users f
+            ON a.faculty_id = f.id
+          LEFT JOIN submissions s
+            ON (
+              a.id = s.assessment_id
+              AND s.student_id = ?
+            )
+          WHERE a.id = ?;
+          `,
+          [studentId, assessmentId]
+        );
+
+        res.json({
+          success: true,
+          assessment
+        });
+      } catch (err: any) {
+        res.status(500).json({
+          success: false,
+          message: err.message
+        });
       }
-
-      const assessment = queryOne(db, `
-        SELECT 
-          a.id,
-          a.title,
-          a.description,
-          a.subject,
-          a.deadline,
-          a.attachment_path,
-          a.created_at,
-          f.name as faculty_name,
-          f.email as faculty_email,
-          COALESCE(s.status, 'Pending') as status,
-          s.id as submission_id,
-          s.file_name as submitted_file_name,
-          s.file_path as submitted_file_path,
-          s.submitted_at
-        FROM assessments a
-        JOIN users f ON a.faculty_id = f.id
-        LEFT JOIN submissions s ON (a.id = s.assessment_id AND s.student_id = ?)
-        WHERE a.id = ?;
-      `, [studentId, assessmentId]);
-
-      res.json({ success: true, assessment });
-    } catch (err: any) {
-      res.status(500).json({ success: false, message: err.message });
     }
-  });
+  );
 
-  // Submit assessment (Upload solution file)
-  app.post('/api/student/assessments/:id/submit', authenticateToken, requireStudent, upload.single('submission_file'), (req: any, res: any) => {
-    try {
-      const assessmentId = parseInt(req.params.id, 10);
-      const studentId = req.user.id;
+  // Submit assessment
+  app.post(
+    '/api/student/assessments/:id/submit',
+    authenticateToken,
+    requireStudent,
+    upload.single('submission_file'),
+    (req: any, res: any) => {
+      try {
+        const assessmentId =
+          parseInt(req.params.id, 10);
 
-      if (!req.file) {
-        return res.status(400).json({ success: false, message: 'Please upload a submission file (.pdf, .doc, .docx, .ppt, .pptx, .zip)' });
+        const studentId = req.user.id;
+
+        if (!req.file) {
+          return res.status(400).json({
+            success: false,
+            message:
+              'Please upload a submission file (.pdf, .doc, .docx, .ppt, .pptx, .zip)'
+          });
+        }
+
+        const assignment = queryOne(
+          db,
+          `
+          SELECT a.id, a.deadline
+          FROM assessment_students ast
+          JOIN assessments a
+            ON ast.assessment_id = a.id
+          WHERE ast.assessment_id = ?
+          AND ast.student_id = ?;
+          `,
+          [assessmentId, studentId]
+        );
+
+        if (!assignment) {
+          return res.status(403).json({
+            success: false,
+            message:
+              'Access denied: You are not assigned to this assessment'
+          });
+        }
+
+        const now = new Date();
+        const deadlineDate =
+          new Date(assignment.deadline);
+
+        const status =
+          now > deadlineDate
+            ? 'Late'
+            : 'Submitted';
+
+        const fileName =
+          req.file.originalname;
+
+        const filePath =
+          req.file.filename;
+
+        execute(
+          db,
+          `
+          INSERT OR REPLACE INTO submissions
+          (assessment_id, student_id, file_name, file_path, submitted_at, status)
+          VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, ?);
+          `,
+          [
+            assessmentId,
+            studentId,
+            fileName,
+            filePath,
+            status
+          ]
+        );
+
+        res.json({
+          success: true,
+          message:
+            'Assessment submitted successfully.',
+          status,
+          file_name: fileName
+        });
+      } catch (err: any) {
+        console.error(
+          'Submission error:',
+          err
+        );
+
+        res.status(500).json({
+          success: false,
+          message: err.message
+        });
       }
+    }
+  );
 
-      // Verify that student is assigned to this assessment
-      const assignment = queryOne(db, `
-        SELECT a.id, a.deadline
-        FROM assessment_students ast
-        JOIN assessments a ON ast.assessment_id = a.id
-        WHERE ast.assessment_id = ? AND ast.student_id = ?;
-      `, [assessmentId, studentId]);
+  // Get all submissions made by student
+  app.get(
+    '/api/student/submissions',
+    authenticateToken,
+    requireStudent,
+    (req: any, res: any) => {
+      try {
+        const studentId = req.user.id;
 
-      if (!assignment) {
-        return res.status(403).json({ success: false, message: 'Access denied: You are not assigned to this assessment' });
+        const submissions = queryAll(
+          db,
+          `
+          SELECT
+            s.id,
+            s.assessment_id,
+            s.file_name,
+            s.file_path,
+            s.submitted_at,
+            s.status,
+            a.title as assessment_title,
+            a.subject,
+            a.deadline,
+            f.name as faculty_name
+          FROM submissions s
+          JOIN assessments a
+            ON s.assessment_id = a.id
+          JOIN users f
+            ON a.faculty_id = f.id
+          WHERE s.student_id = ?
+          ORDER BY s.submitted_at DESC;
+          `,
+          [studentId]
+        );
+
+        res.json({
+          success: true,
+          submissions
+        });
+      } catch (err: any) {
+        res.status(500).json({
+          success: false,
+          message: err.message
+        });
       }
-
-      // Check deadline to calculate status (Submitted vs Late)
-      const now = new Date();
-      const deadlineDate = new Date(assignment.deadline);
-      const status = now > deadlineDate ? 'Late' : 'Submitted';
-
-      const fileName = req.file.originalname;
-      const filePath = req.file.filename;
-
-      // Insert or replace existing submission
-      execute(db, `
-        INSERT OR REPLACE INTO submissions (assessment_id, student_id, file_name, file_path, submitted_at, status)
-        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, ?);
-      `, [assessmentId, studentId, fileName, filePath, status]);
-
-      res.json({
-        success: true,
-        message: 'Assessment submitted successfully.',
-        status,
-        file_name: fileName
-      });
-    } catch (err: any) {
-      console.error('Submission error:', err);
-      res.status(500).json({ success: false, message: err.message });
     }
-  });
-
-  // Get all submissions made by this student
-  app.get('/api/student/submissions', authenticateToken, requireStudent, (req: any, res: any) => {
-    try {
-      const studentId = req.user.id;
-
-      const submissions = queryAll(db, `
-        SELECT 
-          s.id,
-          s.assessment_id,
-          s.file_name,
-          s.file_path,
-          s.submitted_at,
-          s.status,
-          a.title as assessment_title,
-          a.subject,
-          a.deadline,
-          f.name as faculty_name
-        FROM submissions s
-        JOIN assessments a ON s.assessment_id = a.id
-        JOIN users f ON a.faculty_id = f.id
-        WHERE s.student_id = ?
-        ORDER BY s.submitted_at DESC;
-      `, [studentId]);
-
-      res.json({ success: true, submissions });
-    } catch (err: any) {
-      res.status(500).json({ success: false, message: err.message });
-    }
-  });
+  );
 
   // ----------------------------------------------------
   // 5. FILE DOWNLOAD / SERVING API
   // ----------------------------------------------------
-  app.get('/api/files/:filename', authenticateToken, (req: any, res: any) => {
-    try {
-      const filename = path.basename(req.params.filename);
-      const filePath = path.join(UPLOADS_DIR, filename);
 
-      if (!fs.existsSync(filePath)) {
-        return res.status(404).json({ success: false, message: 'File not found' });
+  app.get(
+    '/api/files/:filename',
+    authenticateToken,
+    (req: any, res: any) => {
+      try {
+        const filename =
+          path.basename(req.params.filename);
+
+        const filePath =
+          path.join(
+            UPLOADS_DIR,
+            filename
+          );
+
+        if (!fs.existsSync(filePath)) {
+          return res.status(404).json({
+            success: false,
+            message: 'File not found'
+          });
+        }
+
+        res.download(filePath);
+      } catch (err: any) {
+        res.status(500).json({
+          success: false,
+          message: err.message
+        });
       }
-
-      res.download(filePath);
-    } catch (err: any) {
-      res.status(500).json({ success: false, message: err.message });
     }
-  });
+  );
 
   // ----------------------------------------------------
-  // API 404 & ERROR HANDLING (Guarantees JSON for any /api/* request)
+  // API 404 & ERROR HANDLING
   // ----------------------------------------------------
+
   app.all('/api/*', (req, res) => {
     res.status(404).json({
       success: false,
-      message: `API endpoint not found: ${req.method} ${req.originalUrl}`
+      message:
+        `API endpoint not found: ${req.method} ${req.originalUrl}`
     });
   });
 
-  app.use('/api', (err: any, _req: any, res: any, _next: any) => {
-    console.error('API Error:', err);
-    res.status(err.status || 500).json({
-      success: false,
-      message: err.message || 'Internal server error occurred in API'
-    });
-  });
+  app.use(
+    '/api',
+    (err: any, _req: any, res: any, _next: any) => {
+      console.error('API Error:', err);
+
+      res.status(err.status || 500).json({
+        success: false,
+        message:
+          err.message ||
+          'Internal server error occurred in API'
+      });
+    }
+  );
 
   // ----------------------------------------------------
   // VITE & STATIC SERVING
   // ----------------------------------------------------
+
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true
+      },
       appType: 'custom',
     });
+
     app.use(vite.middlewares);
 
-    app.use('*', async (req, res, next) => {
-      const url = req.originalUrl;
-      if (url.startsWith('/api')) {
-        return next();
+    app.use(
+      '*',
+      async (req, res, next) => {
+        const url = req.originalUrl;
+
+        if (url.startsWith('/api')) {
+          return next();
+        }
+
+        try {
+          let template =
+            fs.readFileSync(
+              path.resolve(
+                process.cwd(),
+                'index.html'
+              ),
+              'utf-8'
+            );
+
+          template =
+            await vite.transformIndexHtml(
+              url,
+              template
+            );
+
+          res
+            .status(200)
+            .set({
+              'Content-Type': 'text/html'
+            })
+            .end(template);
+        } catch (e: any) {
+          vite.ssrFixStacktrace(e);
+          next(e);
+        }
       }
-      try {
-        let template = fs.readFileSync(path.resolve(process.cwd(), 'index.html'), 'utf-8');
-        template = await vite.transformIndexHtml(url, template);
-        res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
-      } catch (e: any) {
-        vite.ssrFixStacktrace(e);
-        next(e);
-      }
-    });
+    );
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (_req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
+    const distPath =
+      path.join(
+        process.cwd(),
+        'dist'
+      );
+
+    app.use(
+      express.static(distPath)
+    );
+
+    app.get(
+      '*',
+      (_req, res) => {
+        res.sendFile(
+          path.join(
+            distPath,
+            'index.html'
+          )
+        );
+      }
+    );
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Student Assignment Submission System running at http://localhost:${PORT}`);
-  });
+  app.listen(
+    PORT,
+    '0.0.0.0',
+    () => {
+      console.log(
+        `Student Assignment Submission System running on port ${PORT}`
+      );
+    }
+  );
 }
 
 startServer();
